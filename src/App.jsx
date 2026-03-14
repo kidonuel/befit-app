@@ -499,24 +499,65 @@ const PlanSelector = ({selected,onChange,pricing})=>(
   </div>
 );
 
-// ─── QR Code Display ──────────────────────────────────────────────────────────
+// ─── QR Code Display (real scannable QR using qrcode-svg algorithm) ──────────
+// We generate a real QR code using the qrcode library loaded from CDN.
+// The QR encodes the GYM_QR_TOKEN so phones can scan it.
 const GymQRCode = ({size=220})=>{
-  const GRID=25, token=GYM_QR_TOKEN;
-  const seed=token.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
-  const pseudo=(i)=>((seed*1103515245+i*12345)&0x7fffffff)%100;
-  const grid=Array(GRID).fill(null).map(()=>Array(GRID).fill(0));
-  const finder=(r,c)=>{ for(let i=0;i<7;i++) for(let j=0;j<7;j++){ const o=i===0||i===6||j===0||j===6,inn=i>=2&&i<=4&&j>=2&&j<=4; grid[r+i][c+j]=(o||inn)?1:0; } if(r+7<GRID) for(let k=0;k<8;k++) grid[r+7][c+k]=0; if(c+7<GRID) for(let k=0;k<8;k++) grid[r+k][c+7]=0; };
-  finder(0,0);finder(0,GRID-7);finder(GRID-7,0);
-  for(let i=8;i<GRID-8;i++){grid[6][i]=i%2===0?1:0;grid[i][6]=i%2===0?1:0;}
-  let bit=0;
-  for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++) if(grid[r][c]===0&&!((r<9&&c<9)||(r<9&&c>GRID-9)||(r>GRID-9&&c<9)||(r===6)||(c===6))) grid[r][c]=pseudo(bit++)>45?1:0;
-  const cs=size/GRID;
-  return(
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{borderRadius:12}}>
-      <rect width={size} height={size} fill="white"/>
-      {grid.map((row,r)=>row.map((cell,c)=>cell?<rect key={`${r}-${c}`} x={c*cs} y={r*cs} width={cs} height={cs} fill="#0D0D0D"/>:null))}
-    </svg>
+  const canvasRef = useRef(null);
+  const [qrImg,   setQrImg]   = useState(null);
+  const [qrErr,   setQrErr]   = useState(false);
+
+  useEffect(()=>{
+    // Load qrcode library from CDN then generate
+    if(window.QRCode){
+      generate();
+      return;
+    }
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload=()=> generate();
+    s.onerror=()=> setQrErr(true);
+    document.head.appendChild(s);
+
+    function generate(){
+      try{
+        // Create a temp div for qrcode to render into
+        const div=document.createElement("div");
+        document.body.appendChild(div);
+        new window.QRCode(div,{
+          text: GYM_QR_TOKEN,
+          width: size,
+          height: size,
+          colorDark: "#0D0D0D",
+          colorLight: "#FFFFFF",
+          correctLevel: window.QRCode.CorrectLevel.H,
+        });
+        // Give it a tick to render then grab the image
+        setTimeout(()=>{
+          const img=div.querySelector("img");
+          const canvas=div.querySelector("canvas");
+          if(img&&img.src){ setQrImg(img.src); }
+          else if(canvas){ setQrImg(canvas.toDataURL()); }
+          document.body.removeChild(div);
+        },200);
+      }catch(e){ setQrErr(true); }
+    }
+  },[]);
+
+  if(qrErr) return(
+    <div style={{width:size,height:size,background:"white",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,padding:16,textAlign:"center"}}>
+      <p style={{color:"#8B1A1A",fontSize:12,fontFamily:"monospace",wordBreak:"break-all"}}>{GYM_QR_TOKEN}</p>
+      <p style={{color:"#999",fontSize:11}}>Use this token to set up scanning</p>
+    </div>
   );
+
+  if(!qrImg) return(
+    <div style={{width:size,height:size,background:"white",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:32,height:32,border:"3px solid #8B1A1A30",borderTop:"3px solid #8B1A1A",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+    </div>
+  );
+
+  return <img src={qrImg} width={size} height={size} style={{borderRadius:12,display:"block"}} alt="BEFIT Check-in QR Code"/>;
 };
 
 // ─── In-App QR Scanner ────────────────────────────────────────────────────────
